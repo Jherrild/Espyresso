@@ -3,22 +3,44 @@ import micropython
 import lib.onewire
 from lib.ds18x20 import DS18X20
 
-# Sensors
+#Formatting
+def format_temp(value, precision=0):
+    return str(round(value, precision))+chr(247)
+
+# Sensors/Sensor functions
 def get_temp(sensor):
     return sensor.read_temp_f()
 
-# Callbacks
+#Debounce logic
+def debounce(last):
+    return (last + 100) < pyb.millis()
+
+# Callback functions
 def adjust_set_up(p):
     global last_up
-    if (last_up + 32) < pyb.millis():
+    if debounce(last_up):
         state['set_temp']=state['set_temp'] + 1
         last_up = pyb.millis()
+        global temp_changed = True
 
 def adjust_set_down(p):
     global last_down
-    if (last_down + 32) < pyb.millis():
+    if debounce(last_down):
         state['set_temp']=state['set_temp'] + 1
         last_down = pyb.millis()
+        global temp_changed = True
+
+# TODO: Run on timer interrupt to periodically backup settings
+def save_settings(p):
+    global temp_changed
+    if temp_changed:
+        settings_file = open('/sd/dat/settings.dat', 'w')
+        # TEST LINE
+        settings_file.write("test")
+        #Do stuff
+        # Write set temps to file (Both shot and steam)
+        settings_file.close()
+        temp_changed = False
 
 # Primitives:
 class Point(object):
@@ -70,10 +92,6 @@ def point(x, y, fill):
 def text(x, y, string, size=1, space=1):
     yield Text(x, y, string, size, space)
 
-#Formatting
-def format_temp(value, precision=0):
-    return str(round(value, precision))+chr(247)
-
 class Controller(object):
     def __init__(self, display, initial_state, controller, view, up_pin, down_pin, shot_switch, steam_switch):
         global state
@@ -101,9 +119,10 @@ class Controller(object):
 
     def run(self):
         self.sensor = DS18X20(pyb.Pin('X12'))
-        global last_up, last_down
-        last_up = 0
-        last_down = 0
+        global last_up, last_down, temp_changed
+        temp_changed = False
+        last_up = pyb.millis()
+        last_down = pyb.millis()
         pyb.ExtInt(self.up_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_up)
         pyb.ExtInt(self.down_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_down)
 
