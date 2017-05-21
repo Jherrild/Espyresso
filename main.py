@@ -3,9 +3,9 @@ import math
 import time
 import machine
 import micropython
-from lib.ssd1306 import Display
-from lib.inputs import Switch
-from lib.engine import Controller, rectangle, text, format_temp
+from Espyresso.lib.ssd1306 import Display
+from Espyresso.lib.inputs import Switch
+from Espyresso.lib.engine import Controller, rectangle, text, format_temp
 
 micropython.alloc_emergency_exception_buf(100)
 DEFAULT_SET_TEMP = 200

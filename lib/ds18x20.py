@@ -37,7 +37,7 @@ pass a ROM to read_temp:
 
 """
 
-from lib.onewire import OneWire
+from Espyresso.lib.onewire import OneWire
 
 class DS18X20(object):
     def __init__(self, pin):
@@ -72,7 +72,7 @@ class DS18X20(object):
         Pass the 8-byte bytes object with the ROM of the specific device you want to read.
         If only one DS18x20 device is attached to the bus you may omit the rom parameter.
         """
-        return ((self.read_temp(rom) * 1.8) + 32)
+        return ((self.read_temp(None) * 1.8) + 32)
 
     def read_temps(self):
         """

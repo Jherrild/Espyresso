@@ -1,7 +1,7 @@
 import pyb
 import micropython
-import lib.onewire
-from lib.ds18x20 import DS18X20
+import Espyresso.lib.onewire
+from Espyresso.lib.ds18x20 import DS18X20
 
 #Formatting
 def format_temp(value, precision=0):
@@ -9,38 +9,58 @@ def format_temp(value, precision=0):
 
 # Sensors/Sensor functions
 def get_temp(sensor):
-    return sensor.read_temp_f()
+    try:
+        return sensor.read_temp_f()
+    except IndexError:
+        return "No Sensor"
 
 #Debounce logic
-def debounce(last):
-    return (last + 100) < pyb.millis()
+def debounce(last, wait):
+    return (last + wait) < pyb.millis()
 
 # Callback functions
 def adjust_set_up(p):
-    global last_up
-    if debounce(last_up):
+    global last_up, temp_changed
+    if debounce(last_up, 200):
         state['set_temp']=state['set_temp'] + 1
         last_up = pyb.millis()
-        global temp_changed = True
+        temp_changed = True
 
 def adjust_set_down(p):
-    global last_down
-    if debounce(last_down):
-        state['set_temp']=state['set_temp'] + 1
+    global last_down, temp_changed
+    if debounce(last_down, 200):
+        state['set_temp']=state['set_temp'] - 1
         last_down = pyb.millis()
-        global temp_changed = True
+        temp_changed = True
 
 # TODO: Run on timer interrupt to periodically backup settings
-def save_settings(p):
-    global temp_changed
+def save_settings():
+    global temp_changed, last_saved
     if temp_changed:
         settings_file = open('/sd/dat/settings.dat', 'w')
-        # TEST LINE
-        settings_file.write("test")
-        #Do stuff
-        # Write set temps to file (Both shot and steam)
+        settings_file.write("set_temp " + str(state['set_temp']))
+        #TODO: Add steam temp
         settings_file.close()
         temp_changed = False
+        last_saved = pyb.millis()
+        print("Settings saved")
+
+
+def restore_settings():
+    with open('/sd/dat/settings.dat', 'r') as file:
+        settings = [line.strip('\n') for line in file.readlines()]
+
+    for property in settings:
+        print("\tLoading property: " + property)
+        restore_setting(property)
+
+    return
+
+def restore_setting(property):
+    pair = property.split()
+    if len(pair) == 2:
+        state[str(pair[0])] = int(pair[1])
+    return
 
 # Primitives:
 class Point(object):
@@ -54,7 +74,6 @@ class Point(object):
 
     def translate(self, x, y):
         return Point(x + self.x, y + self.y, self.fill)
-
 
 class Text(object):
     def __init__(self, x, y, string, size=1, space=1):
@@ -70,14 +89,12 @@ class Text(object):
     def translate(self, x, y):
         return Text(x + self.x, y + self.y, self.string, self.size, self.space)
 
-
 def relative(fn):
     def wrapper(x, y, *args, **kwargs):
         for primitive in fn(*args, **kwargs):
             yield primitive.translate(x, y)
 
     return wrapper
-
 
 # Components:
 @relative
@@ -109,6 +126,7 @@ class Controller(object):
             primitive.draw(self.display)
 
     def _update_devices_info(self):
+        print("_update_device_info")
         state['boiler_temp'] = get_temp(self.sensor)
         if state['state'] != self.shot_switch.on:
             state['state'] = self.shot_switch.on
@@ -118,11 +136,14 @@ class Controller(object):
                          'height': self.display.height})
 
     def run(self):
-        self.sensor = DS18X20(pyb.Pin('X12'))
-        global last_up, last_down, temp_changed
-        temp_changed = False
+        global last_up, last_down, last_saved, temp_changed
         last_up = pyb.millis()
-        last_down = pyb.millis()
+        last_down = last_up
+        last_saved = last_up
+        temp_changed = False
+
+        restore_settings()
+        self.sensor = DS18X20(pyb.Pin('X12'))
         pyb.ExtInt(self.up_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_up)
         pyb.ExtInt(self.down_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_down)
 
@@ -131,6 +152,9 @@ class Controller(object):
             state = self.controller(state)
             primitives = self.view(state)
 
+            if debounce(last_saved, 6000):
+                save_settings()
+
             with self.display:
                 self._draw(primitives)
-            pyb.wfi()
+            #pyb.wfi()
