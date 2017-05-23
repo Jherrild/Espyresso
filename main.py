@@ -9,9 +9,13 @@ from Espyresso.lib.engine import Controller, rectangle, text, format_temp
 
 micropython.alloc_emergency_exception_buf(100)
 DEFAULT_SET_TEMP = 200
+DEFAULT_STEAM_TEMP = 240
+MAX_TEMP = 250
 
 PUMP_ON = 1
 PUMP_OFF = 0
+SHOT = 1
+STEAM = 0
 
 # Views:
 def main_screen(w, h, set_temp, current_temp):
@@ -55,9 +59,12 @@ pid_controller = Controller(display=Display(pinout={'sda': 'Y10',
                                             height=64,
                                             external_vcc=False),
                                             initial_state={'state': PUMP_OFF,
+                                                            'mode': SHOT,
                                                             'start_time': pyb.millis(),
-                                                            'set_temp':DEFAULT_SET_TEMP,
-                                                            'boiler_temp':0},
+                                                            'set_temp': DEFAULT_SET_TEMP,
+                                                            'steam_temp': DEFAULT_STEAM_TEMP,
+                                                            'max_temp': MAX_TEMP,
+                                                            'boiler_temp': 0},
                                             view=view,
                                             controller=controller,
                                             up_pin='X9',

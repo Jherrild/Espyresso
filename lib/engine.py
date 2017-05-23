@@ -3,7 +3,7 @@ import micropython
 import Espyresso.lib.onewire
 from Espyresso.lib.ds18x20 import DS18X20
 
-#Formatting
+# Formatting
 def format_temp(value, precision=0):
     return str(round(value, precision))+chr(247)
 
