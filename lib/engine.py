@@ -3,9 +3,11 @@ import micropython
 import Espyresso.lib.onewire
 from Espyresso.lib.ds18x20 import DS18X20
 
+
 # Formatting
 def format_temp(value, precision=0):
-    return str(round(value, precision))+chr(247)
+    return str(round(value, precision)) + chr(247)
+
 
 # Sensors/Sensor functions
 def get_temp(sensor):
@@ -14,24 +16,34 @@ def get_temp(sensor):
     except IndexError:
         return "No Sensor"
 
-#Debounce logic
+
+# Debounce logic
 def debounce(last, wait):
     return (last + wait) < pyb.millis()
+
 
 # Callback functions
 def adjust_set_up(p):
     global last_up, temp_changed
     if debounce(last_up, 200):
-        state['set_temp']=state['set_temp'] + 1
+        if state['mode']:
+            state['set_temp'] = state['set_temp'] + 1
+        else:
+            state['steam_temp'] = state['steam_temp'] + 1
         last_up = pyb.millis()
         temp_changed = True
+
 
 def adjust_set_down(p):
     global last_down, temp_changed
     if debounce(last_down, 200):
-        state['set_temp']=state['set_temp'] - 1
+        if state['mode']:
+            state['set_temp'] = state['set_temp'] - 1
+        else:
+            state['steam_temp'] = state['steam_temp'] - 1
         last_down = pyb.millis()
         temp_changed = True
+
 
 # TODO: Run on timer interrupt to periodically backup settings
 def save_settings():
@@ -39,7 +51,8 @@ def save_settings():
     if temp_changed:
         settings_file = open('/sd/dat/settings.dat', 'w')
         settings_file.write("set_temp " + str(state['set_temp']))
-        #TODO: Add steam temp
+        settings_file.write("\n")
+        settings_file.write("steam_temp " + str(state['steam_temp']))
         settings_file.close()
         temp_changed = False
         last_saved = pyb.millis()
@@ -56,11 +69,13 @@ def restore_settings():
 
     return
 
+
 def restore_setting(property):
     pair = property.split()
     if len(pair) == 2:
         state[str(pair[0])] = int(pair[1])
     return
+
 
 # Primitives:
 class Point(object):
@@ -74,6 +89,7 @@ class Point(object):
 
     def translate(self, x, y):
         return Point(x + self.x, y + self.y, self.fill)
+
 
 class Text(object):
     def __init__(self, x, y, string, size=1, space=1):
@@ -89,12 +105,14 @@ class Text(object):
     def translate(self, x, y):
         return Text(x + self.x, y + self.y, self.string, self.size, self.space)
 
+
 def relative(fn):
     def wrapper(x, y, *args, **kwargs):
         for primitive in fn(*args, **kwargs):
             yield primitive.translate(x, y)
 
     return wrapper
+
 
 # Components:
 @relative
@@ -103,16 +121,20 @@ def rectangle(w, h, fill):
         for y in range(h):
             yield Point(x, y, fill)
 
+
 def point(x, y, fill):
     yield Point(x, y, fill)
 
+
 def text(x, y, string, size=1, space=1):
     yield Text(x, y, string, size, space)
+
 
 class Controller(object):
     def __init__(self, display, initial_state, controller, view, up_pin, down_pin, shot_switch, steam_switch):
         global state
         state = initial_state
+        self.sensor = DS18X20(pyb.Pin('X12'))
         self.display = display
         self.controller = controller
         self.view = view
@@ -131,9 +153,11 @@ class Controller(object):
         if state['state'] != self.shot_switch.on:
             state['state'] = self.shot_switch.on
             state['start_time'] = pyb.millis()
+        if state['mode'] != self.steam_switch.on:
+            state['mode'] = self.steam_switch.on
         return dict(state,
-                display={'width': self.display.width,
-                         'height': self.display.height})
+                    display={'width': self.display.width,
+                             'height': self.display.height})
 
     def run(self):
         global last_up, last_down, last_saved, temp_changed
@@ -143,7 +167,6 @@ class Controller(object):
         temp_changed = False
 
         restore_settings()
-        self.sensor = DS18X20(pyb.Pin('X12'))
         pyb.ExtInt(self.up_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_up)
         pyb.ExtInt(self.down_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_down)
 
@@ -157,4 +180,4 @@ class Controller(object):
 
             with self.display:
                 self._draw(primitives)
-            #pyb.wfi()
+                # pyb.wfi()
