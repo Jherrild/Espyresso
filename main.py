@@ -23,14 +23,14 @@ def main_screen(w, h, set_temp, current_temp):
     yield from text(x=0, y=0, string='Temp:', size=2)
     yield from text(x=60, y=0, string=current_temp, size=2)
     yield from text(x=0, y=30, string='Set:', size=3)
-    yield from text(x=65, y=30, string=set_temp , size=3)
+    yield from text(x=65, y=30, string=set_temp, size=3)
 
 
 def shot_timer(w, h, t, current_temp):
     yield from text(x=0, y=0, string='Temp:', size=2)
     yield from text(x=60, y=0, string=current_temp, size=2)
     yield from text(x=0, y=30, string='Time:', size=3)
-    yield from text(x=80, y=30, string=t , size=3)
+    yield from text(x=80, y=30, string=t, size=3)
 
 
 def view(state):

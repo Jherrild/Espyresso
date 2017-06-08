@@ -1,6 +1,7 @@
 import pyb
 import micropython
 import Espyresso.lib.onewire
+from Espyresso.lib.PID import PIDController
 from Espyresso.lib.ds18x20 import DS18X20
 
 
@@ -45,33 +46,36 @@ def adjust_set_down(p):
         temp_changed = True
 
 
-# TODO: Run on timer interrupt to periodically backup settings
 def save_settings():
     global temp_changed, last_saved
     if temp_changed:
         settings_file = open('/sd/dat/settings.dat', 'w')
-        settings_file.write("set_temp " + str(state['set_temp']))
-        settings_file.write("\n")
-        settings_file.write("steam_temp " + str(state['steam_temp']))
+        save_setting(settings_file, "set_temp")
+        save_setting(settings_file, "steam_temp")
         settings_file.close()
         temp_changed = False
         last_saved = pyb.millis()
         print("Settings saved")
 
 
+# Assumes that the given file is open
+def save_setting(file, key):
+    file.write(key + " " + str(state[key]) + "\n")
+
+
 def restore_settings():
     with open('/sd/dat/settings.dat', 'r') as file:
         settings = [line.strip('\n') for line in file.readlines()]
 
-    for property in settings:
-        print("\tLoading property: " + property)
-        restore_setting(property)
+    for prop in settings:
+        print("\tLoading property: " + prop)
+        restore_setting(prop)
 
     return
 
 
-def restore_setting(property):
-    pair = property.split()
+def restore_setting(prop):
+    pair = prop.split()
     if len(pair) == 2:
         state[str(pair[0])] = int(pair[1])
     return
@@ -132,7 +136,7 @@ def text(x, y, string, size=1, space=1):
 
 class Controller(object):
     def __init__(self, display, initial_state, controller, view, up_pin, down_pin, shot_switch, steam_switch):
-        global state
+        global state, pid
         state = initial_state
         self.sensor = DS18X20(pyb.Pin('X12'))
         self.display = display
@@ -148,35 +152,39 @@ class Controller(object):
             primitive.draw(self.display)
 
     def _update_devices_info(self):
-        print("_update_device_info")
         state['boiler_temp'] = get_temp(self.sensor)
+        if temp_changed and debounce(last_saved, 6000):
+            save_settings()
         if state['state'] != self.shot_switch.on:
             state['state'] = self.shot_switch.on
             state['start_time'] = pyb.millis()
         if state['mode'] != self.steam_switch.on:
-            state['mode'] = self.steam_switch.on
+            state['mode'] = not state['mode']
+            if state['mode']:
+                pid.set_temp(state['set_temp'])
+            else:
+                pid.set_temp(state['steam_temp'])
         return dict(state,
                     display={'width': self.display.width,
                              'height': self.display.height})
 
     def run(self):
-        global last_up, last_down, last_saved, temp_changed
+        global last_up, last_down, last_saved, temp_changed, state, pid
         last_up = pyb.millis()
         last_down = last_up
         last_saved = last_up
         temp_changed = False
 
         restore_settings()
+        pid = PIDController(set_temp=state['set_temp'])
         pyb.ExtInt(self.up_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_up)
         pyb.ExtInt(self.down_pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_DOWN, adjust_set_down)
 
         while True:
             state = self._update_devices_info()
             state = self.controller(state)
+            pid.update(state['boiler_temp'])
             primitives = self.view(state)
-
-            if debounce(last_saved, 6000):
-                save_settings()
 
             with self.display:
                 self._draw(primitives)
